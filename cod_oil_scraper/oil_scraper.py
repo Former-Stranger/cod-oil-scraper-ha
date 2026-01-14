@@ -16,7 +16,7 @@ import json
 # Configuration from environment variables
 ZIPCODE = os.getenv("ZIPCODE")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info").upper()
-SUPERVISOR_TOKEN = os.getenv("SUPERVISOR_TOKEN")
+HA_TOKEN = os.getenv("HA_TOKEN")
 
 # Setup logging
 logging.basicConfig(
@@ -32,16 +32,17 @@ ENTITY_ID = f"sensor.heating_oil_price_{ZIPCODE}"
 
 def push_to_ha(price):
     """
-    Push price to Home Assistant using internal API
-    
+    Push price to Home Assistant using REST API
+
     Args:
         price (float): The oil price in $/gallon
-        
+
     Returns:
         bool: True if successful, False otherwise
     """
-    url = f"http://supervisor/core/api/states/{ENTITY_ID}"
-    
+    # Use direct Home Assistant API
+    url = f"http://homeassistant:8123/api/states/{ENTITY_ID}"
+
     payload = {
         "state": str(price),
         "attributes": {
@@ -53,17 +54,15 @@ def push_to_ha(price):
             "source": "codoil.com"
         }
     }
-    
+
     try:
         logger.debug(f"Pushing to URL: {url}")
-        logger.debug(f"SUPERVISOR_TOKEN present: {bool(SUPERVISOR_TOKEN)}")
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {SUPERVISOR_TOKEN}"
+            "Authorization": f"Bearer {HA_TOKEN}"
         }
 
         r = requests.post(url, headers=headers, json=payload, timeout=30)
-        logger.debug(f"Response status: {r.status_code}, body: {r.text[:200] if r.text else 'empty'}")
         
         if r.status_code in [200, 201]:
             logger.info(f"✓ Successfully pushed price ${price}/gal to Home Assistant")
@@ -226,7 +225,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.4.6)")
+    logger.info("COD Oil Price Scraper - Starting (v1.4.7)")
     logger.info("=" * 50)
     
     # Validate configuration

@@ -1,35 +1,44 @@
-#!/usr/bin/env bashio
+#!/usr/bin/env bash
 set -e
 
+CONFIG_PATH=/data/options.json
+
 echo "================================================"
-echo "COD Oil Price Scraper Starting (v1.4.6)"
+echo "COD Oil Price Scraper Starting (v1.4.7)"
 echo "================================================"
 
-# Read configuration using bashio
-ZIPCODE=$(bashio::config 'zipcode')
-HOUR_1=$(bashio::config 'schedule_hour_1')
-HOUR_2=$(bashio::config 'schedule_hour_2')
-LOG_LEVEL=$(bashio::config 'log_level')
+# Read configuration from options.json
+ZIPCODE=$(jq --raw-output '.zipcode' $CONFIG_PATH)
+HA_TOKEN=$(jq --raw-output '.ha_token' $CONFIG_PATH)
+HOUR_1=$(jq --raw-output '.schedule_hour_1' $CONFIG_PATH)
+HOUR_2=$(jq --raw-output '.schedule_hour_2' $CONFIG_PATH)
+LOG_LEVEL=$(jq --raw-output '.log_level // "info"' $CONFIG_PATH)
 
 # Validate configuration
 if [ -z "$ZIPCODE" ]; then
-    bashio::log.error "Zipcode not configured!"
+    echo "ERROR: Zipcode not configured!"
     exit 1
 fi
 
-# Get the supervisor token using bashio
-SUPERVISOR_TOKEN="${__BASHIO_SUPERVISOR_TOKEN:-}"
+if [ -z "$HA_TOKEN" ]; then
+    echo "ERROR: ha_token not configured!"
+    echo "Please create a Long-Lived Access Token in Home Assistant:"
+    echo "  1. Go to your Profile (bottom left)"
+    echo "  2. Scroll to Long-Lived Access Tokens"
+    echo "  3. Create a token and paste it in the add-on configuration"
+    exit 1
+fi
 
 # Export environment variables for Python script
 export ZIPCODE
+export HA_TOKEN
 export LOG_LEVEL
-export SUPERVISOR_TOKEN
 
 echo "Configuration:"
 echo "  Zipcode: $ZIPCODE"
 echo "  Schedule: ${HOUR_1}:00 and ${HOUR_2}:00 daily"
 echo "  Log Level: $LOG_LEVEL"
-echo "  Supervisor Token: ${SUPERVISOR_TOKEN:+present}"
+echo "  HA Token: ${HA_TOKEN:+configured}"
 echo "================================================"
 
 # Create log directory
@@ -38,8 +47,8 @@ mkdir -p /var/log
 # Setup cron jobs
 echo "Setting up cron schedule..."
 cat > /etc/crontabs/root << EOF
-0 ${HOUR_1} * * * cd /app && ZIPCODE="${ZIPCODE}" LOG_LEVEL="${LOG_LEVEL}" SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}" python3 /app/oil_scraper.py >> /var/log/oil_scraper.log 2>&1
-0 ${HOUR_2} * * * cd /app && ZIPCODE="${ZIPCODE}" LOG_LEVEL="${LOG_LEVEL}" SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}" python3 /app/oil_scraper.py >> /var/log/oil_scraper.log 2>&1
+0 ${HOUR_1} * * * cd /app && ZIPCODE="${ZIPCODE}" HA_TOKEN="${HA_TOKEN}" LOG_LEVEL="${LOG_LEVEL}" python3 /app/oil_scraper.py >> /var/log/oil_scraper.log 2>&1
+0 ${HOUR_2} * * * cd /app && ZIPCODE="${ZIPCODE}" HA_TOKEN="${HA_TOKEN}" LOG_LEVEL="${LOG_LEVEL}" python3 /app/oil_scraper.py >> /var/log/oil_scraper.log 2>&1
 EOF
 
 # Run immediately on startup
