@@ -56,12 +56,14 @@ def push_to_ha(price):
     
     try:
         logger.debug(f"Pushing to URL: {url}")
+        logger.debug(f"SUPERVISOR_TOKEN present: {bool(SUPERVISOR_TOKEN)}")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {SUPERVISOR_TOKEN}"
         }
 
         r = requests.post(url, headers=headers, json=payload, timeout=30)
+        logger.debug(f"Response status: {r.status_code}, body: {r.text[:200] if r.text else 'empty'}")
         
         if r.status_code in [200, 201]:
             logger.info(f"✓ Successfully pushed price ${price}/gal to Home Assistant")
@@ -224,7 +226,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.4.1)")
+    logger.info("COD Oil Price Scraper - Starting (v1.4.3)")
     logger.info("=" * 50)
     
     # Validate configuration
