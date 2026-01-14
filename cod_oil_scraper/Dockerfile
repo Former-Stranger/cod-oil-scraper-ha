@@ -5,8 +5,6 @@ FROM $BUILD_FROM
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    chromium \
-    chromium-chromedriver \
     bash \
     jq \
     dcron
@@ -14,22 +12,18 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements first for better caching
+# Copy requirements
 COPY requirements.txt .
 
 # Install Python packages
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Install Playwright and Chromium
-RUN playwright install-deps && \
-    playwright install chromium
+RUN pip3 install --break-system-packages --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY oil_scraper.py .
 COPY run.sh .
 
 # Make run script executable
-RUN chmod +x /app/run.sh
+RUN chmod a+x /app/run.sh
 
 # Set entrypoint
 CMD ["/app/run.sh"]

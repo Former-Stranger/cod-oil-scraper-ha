@@ -7,10 +7,10 @@ Scrapes heating oil prices from codoil.com and pushes to Home Assistant
 import os
 import sys
 import logging
-from playwright.sync_api import sync_playwright
 import requests
 import re
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 # Configuration from environment variables
 HA_URL = os.getenv("HA_URL", "http://supervisor/core")
@@ -66,7 +66,7 @@ def push_to_ha(price):
         return True
     except requests.exceptions.RequestException as e:
         logger.error(f"✗ Failed to push to Home Assistant: {e}")
-        if hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and e.response is not None:
             logger.debug(f"Response: {e.response.text}")
         return False
     except Exception as e:
@@ -84,49 +84,72 @@ def scrape_price():
     logger.info(f"Starting price scrape for zipcode: {ZIPCODE}")
     
     try:
-        with sync_playwright() as p:
-            # Launch browser in headless mode
-            logger.debug("Launching Chromium browser...")
-            browser = p.chromium.launch(
-                headless=True,
-                args=['--no-sandbox', '--disable-dev-shm-usage']
-            )
-            page = browser.new_page()
-            
-            # Navigate to COD Oil website
-            logger.debug("Navigating to codoil.com...")
-            page.goto("https://www.codoil.com", timeout=60000)
-            
-            # Wait for and fill zipcode input
-            logger.debug("Waiting for zip code input field...")
-            page.wait_for_selector("input#number", timeout=30000)
-            
-            logger.debug(f"Entering zipcode: {ZIPCODE}")
-            page.fill("input#number", ZIPCODE, force=True)
-            page.keyboard.press("Enter")
-            
-            # Wait for results to load
-            logger.debug("Waiting for results to load...")
-            page.wait_for_timeout(10000)
-            
-            # Get page content
-            html = page.content()
-            browser.close()
-            logger.debug("Browser closed")
-            
-        # Extract price using regex
-        logger.debug("Parsing price from page content...")
-        match = re.search(r"\$([0-9]+\.[0-9]{2})", html)
+        # Create a session
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
         
-        if not match:
+        # First, get the main page to establish session
+        logger.debug("Fetching main page...")
+        response = session.get("https://www.codoil.com", timeout=30)
+        response.raise_for_status()
+        
+        # Now submit the zipcode
+        logger.debug(f"Submitting zipcode: {ZIPCODE}")
+        
+        # Try the form submission
+        form_data = {
+            'number': ZIPCODE
+        }
+        
+        response = session.post(
+            "https://www.codoil.com",
+            data=form_data,
+            timeout=30,
+            allow_redirects=True
+        )
+        response.raise_for_status()
+        
+        # Parse the HTML
+        logger.debug("Parsing HTML response...")
+        html = response.text
+        
+        # Extract price using regex - look for price patterns
+        price_patterns = [
+            r'\$(\d+\.\d{2})',  # $3.45
+            r'(\d+\.\d{2})\s*(?:per\s*gal|\/\s*gal)',  # 3.45 per gal or 3.45/gal
+        ]
+        
+        price = None
+        for pattern in price_patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            if matches:
+                # Get the first reasonable price (between $1 and $10)
+                for match in matches:
+                    try:
+                        potential_price = float(match)
+                        if 1.0 <= potential_price <= 10.0:
+                            price = potential_price
+                            break
+                    except ValueError:
+                        continue
+                if price:
+                    break
+        
+        if not price:
             logger.error("✗ Price not found in page content")
             logger.debug(f"Page content length: {len(html)} characters")
+            # Save a sample of the HTML for debugging
+            logger.debug(f"HTML sample: {html[:500]}")
             return None
             
-        price = float(match.group(1))
         logger.info(f"✓ Found price: ${price}/gal")
         return price
         
+    except requests.exceptions.RequestException as e:
+        logger.error(f"✗ Network error during scraping: {e}")
+        return None
     except Exception as e:
         logger.error(f"✗ Error during scraping: {e}")
         logger.exception("Full traceback:")
