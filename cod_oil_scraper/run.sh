@@ -4,14 +4,14 @@ set -e
 CONFIG_PATH=/data/options.json
 
 echo "================================================"
-echo "COD Oil Price Scraper Starting (v1.4.7)"
+echo "COD Oil Price Scraper Starting (v1.5.0)"
 echo "================================================"
 
 # Read configuration from options.json
 ZIPCODE=$(jq --raw-output '.zipcode' $CONFIG_PATH)
 HA_TOKEN=$(jq --raw-output '.ha_token' $CONFIG_PATH)
-HOUR_1=$(jq --raw-output '.schedule_hour_1' $CONFIG_PATH)
-HOUR_2=$(jq --raw-output '.schedule_hour_2' $CONFIG_PATH)
+SCHEDULE_HOUR=$(jq --raw-output '.schedule_hour' $CONFIG_PATH)
+SCHEDULE_MINUTE=$(jq --raw-output '.schedule_minute' $CONFIG_PATH)
 LOG_LEVEL=$(jq --raw-output '.log_level // "info"' $CONFIG_PATH)
 
 # Validate configuration
@@ -34,9 +34,12 @@ export ZIPCODE
 export HA_TOKEN
 export LOG_LEVEL
 
+# Format time for display
+printf -v FORMATTED_TIME "%02d:%02d" "$SCHEDULE_HOUR" "$SCHEDULE_MINUTE"
+
 echo "Configuration:"
 echo "  Zipcode: $ZIPCODE"
-echo "  Schedule: ${HOUR_1}:00 and ${HOUR_2}:00 daily"
+echo "  Daily Schedule: $FORMATTED_TIME"
 echo "  Log Level: $LOG_LEVEL"
 echo "  HA Token: ${HA_TOKEN:+configured}"
 echo "================================================"
@@ -44,11 +47,10 @@ echo "================================================"
 # Create log directory
 mkdir -p /var/log
 
-# Setup cron jobs
+# Setup cron job (once daily)
 echo "Setting up cron schedule..."
 cat > /etc/crontabs/root << EOF
-0 ${HOUR_1} * * * cd /app && ZIPCODE="${ZIPCODE}" HA_TOKEN="${HA_TOKEN}" LOG_LEVEL="${LOG_LEVEL}" python3 /app/oil_scraper.py >> /var/log/oil_scraper.log 2>&1
-0 ${HOUR_2} * * * cd /app && ZIPCODE="${ZIPCODE}" HA_TOKEN="${HA_TOKEN}" LOG_LEVEL="${LOG_LEVEL}" python3 /app/oil_scraper.py >> /var/log/oil_scraper.log 2>&1
+${SCHEDULE_MINUTE} ${SCHEDULE_HOUR} * * * cd /app && ZIPCODE="${ZIPCODE}" HA_TOKEN="${HA_TOKEN}" LOG_LEVEL="${LOG_LEVEL}" python3 /app/oil_scraper.py >> /var/log/oil_scraper.log 2>&1
 EOF
 
 # Run immediately on startup
@@ -57,7 +59,7 @@ python3 /app/oil_scraper.py 2>&1 | tee -a /var/log/oil_scraper.log
 
 echo "================================================"
 echo "Initial scrape complete. Starting cron daemon..."
-echo "Logs will be available in the add-on Log tab"
+echo "Next scheduled run: $FORMATTED_TIME daily"
 echo "================================================"
 
 # Start cron in foreground

@@ -8,9 +8,9 @@ This Home Assistant add-on automatically fetches current heating oil prices from
 
 ## Features
 
-- 🔄 Automatic price updates on a configurable schedule
+- 🔄 Automatic daily price updates on a configurable schedule
 - 📊 Creates a sensor entity automatically (no manual configuration needed)
-- 🕐 Configurable update times (default: 9 AM and 3 PM)
+- 🕐 Configurable update time (default: midnight)
 - 📝 Detailed logging with configurable log levels
 - 🚀 Runs immediately on startup
 - 💾 Stores price history in Home Assistant
@@ -28,12 +28,23 @@ This Home Assistant add-on automatically fetches current heating oil prices from
 
 ## Configuration
 
+### Step 1: Create a Long-Lived Access Token
+
+1. Click your **profile icon** (bottom left in Home Assistant sidebar)
+2. Scroll down to **Long-Lived Access Tokens**
+3. Click **Create Token**
+4. Give it a name like "COD Oil Scraper"
+5. **Copy the token** (you won't be able to see it again!)
+
+### Step 2: Configure the Add-on
+
 Configure in the add-on's **Configuration** tab:
 
 ```yaml
 zipcode: "06810"
-schedule_hour_1: 9
-schedule_hour_2: 15
+ha_token: "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE"
+schedule_hour: 0
+schedule_minute: 0
 log_level: "info"
 ```
 
@@ -42,18 +53,20 @@ log_level: "info"
 | Option | Required | Default | Description |
 |--------|----------|---------|-------------|
 | `zipcode` | **Yes** | `"06810"` | Your zip code for price lookup |
-| `schedule_hour_1` | No | `9` | First daily update hour (0-23) |
-| `schedule_hour_2` | No | `15` | Second daily update hour (0-23) |
+| `ha_token` | **Yes** | `""` | Your Long-Lived Access Token |
+| `schedule_hour` | No | `0` | Hour to check price daily (0-23) |
+| `schedule_minute` | No | `0` | Minute to check price daily (0-59) |
 | `log_level` | No | `"info"` | Logging level: `debug`, `info`, `warning`, `error` |
 
 ## Usage
 
 After installation:
 
-1. Configure your zip code in the **Configuration** tab
-2. Click **Start**
-3. Enable **Start on boot** (recommended)
-4. Check the **Log** tab to verify it's working
+1. Create a Long-Lived Access Token (see above)
+2. Configure your zip code and token in the **Configuration** tab
+3. Click **Start**
+4. Enable **Start on boot** (recommended)
+5. Check the **Log** tab to verify it's working
 
 ### Sensor Entity
 

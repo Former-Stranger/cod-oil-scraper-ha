@@ -1,9 +1,10 @@
 name: "COD Oil Price Scraper"
 description: "Scrapes heating oil prices from COD Oil and updates Home Assistant"
-version: "1.4.7"
+version: "1.5.0"
 slug: "cod_oil_scraper"
 init: false
 url: https://github.com/Former-Stranger/cod_oil_scraper
+image: ghcr.io/former-stranger/cod_oil_scraper-{arch}
 arch:
   - armhf
   - armv7
@@ -15,12 +16,12 @@ boot: auto
 options:
   zipcode: "06810"
   ha_token: ""
-  schedule_hour_1: 9
-  schedule_hour_2: 15
+  schedule_hour: 0
+  schedule_minute: 0
   log_level: "info"
 schema:
   zipcode: str
   ha_token: str
-  schedule_hour_1: int(0,23)
-  schedule_hour_2: int(0,23)
+  schedule_hour: int(0,23)
+  schedule_minute: int(0,59)
   log_level: list(debug|info|warning|error)

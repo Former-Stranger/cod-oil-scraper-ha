@@ -31,10 +31,9 @@ In the add-on's **Configuration** tab, enter:
 
 ```yaml
 zipcode: "06810"
-ha_url: "http://homeassistant:8123"
 ha_token: "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE"
-schedule_hour_1: 9
-schedule_hour_2: 15
+schedule_hour: 0
+schedule_minute: 0
 log_level: "info"
 ```
 
@@ -43,10 +42,9 @@ log_level: "info"
 | Option | Required | Default | Description |
 |--------|----------|---------|-------------|
 | `zipcode` | **Yes** | `"06810"` | Your zip code for price lookup |
-| `ha_url` | **Yes** | `"http://homeassistant:8123"` | Home Assistant URL (usually don't change) |
 | `ha_token` | **Yes** | `""` | Your Long-Lived Access Token |
-| `schedule_hour_1` | No | `9` | First daily update hour (0-23) |
-| `schedule_hour_2` | No | `15` | Second daily update hour (0-23) |
+| `schedule_hour` | No | `0` | Hour to check price daily (0-23) |
+| `schedule_minute` | No | `0` | Minute to check price daily (0-59) |
 | `log_level` | No | `"info"` | Logging level: `debug`, `info`, `warning`, `error` |
 
 ### Step 3: Start the Add-on
@@ -80,7 +78,7 @@ severity:
 
 ### Token Error
 
-If you see "HA_TOKEN not configured":
+If you see "ha_token not configured":
 1. Make sure you created a Long-Lived Access Token
 2. Copy the full token (usually starts with `eyJ...`)
 3. Paste it in the `ha_token` field in configuration
