@@ -11,6 +11,7 @@ import logging
 import requests
 import re
 from datetime import datetime
+import time
 
 # Configuration from environment variables
 ZIPCODE = os.getenv("ZIPCODE")
@@ -89,21 +90,46 @@ def scrape_price():
     logger.info(f"Starting price scrape for zipcode: {ZIPCODE}")
     
     try:
-        # Create a session
+        # Create a session with more realistic browser headers
         session = requests.Session()
+        
+        # More complete browser headers to avoid bot detection
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
         })
         
-        # First, get the main page to establish session
+        # First, get the main page to establish session and get cookies
         logger.debug("Fetching main page...")
-        response = session.get("https://www.codoil.com", timeout=30)
+        response = session.get("https://www.codoil.com", timeout=30, allow_redirects=True)
         response.raise_for_status()
         
-        # Now submit the zipcode
+        logger.debug(f"Initial response status: {response.status_code}")
+        logger.debug(f"Cookies received: {len(session.cookies)}")
+        
+        # Small delay to appear more human-like
+        time.sleep(1)
+        
+        # Now submit the zipcode with the established session
         logger.debug(f"Submitting zipcode: {ZIPCODE}")
         
-        # Try the form submission
+        # Update headers for the POST request
+        session.headers.update({
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://www.codoil.com',
+            'Referer': 'https://www.codoil.com/',
+        })
+        
         form_data = {
             'number': ZIPCODE
         }
@@ -115,6 +141,8 @@ def scrape_price():
             allow_redirects=True
         )
         response.raise_for_status()
+        
+        logger.debug(f"POST response status: {response.status_code}")
         
         # Parse the HTML
         logger.debug("Parsing HTML response...")
@@ -151,6 +179,13 @@ def scrape_price():
         logger.info(f"✓ Found price: ${price}/gal")
         return price
         
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 403:
+            logger.error(f"✗ Access forbidden (403) - website may be blocking automated access")
+            logger.error("This could be due to bot detection. The website may require a real browser.")
+        else:
+            logger.error(f"✗ HTTP error during scraping: {e}")
+        return None
     except requests.exceptions.RequestException as e:
         logger.error(f"✗ Network error during scraping: {e}")
         return None
