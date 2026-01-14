@@ -93,12 +93,11 @@ def scrape_price():
         # Create a session with more realistic browser headers
         session = requests.Session()
         
-        # More complete browser headers to avoid bot detection
+        # More complete browser headers - NOTE: removed gzip from Accept-Encoding to avoid compression issues
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
             'DNT': '1',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
@@ -116,6 +115,7 @@ def scrape_price():
         
         logger.debug(f"Initial response status: {response.status_code}")
         logger.debug(f"Cookies received: {len(session.cookies)}")
+        logger.debug(f"Response encoding: {response.encoding}")
         
         # Small delay to appear more human-like
         time.sleep(1)
@@ -143,9 +143,10 @@ def scrape_price():
         response.raise_for_status()
         
         logger.debug(f"POST response status: {response.status_code}")
+        logger.debug(f"POST response encoding: {response.encoding}")
+        logger.debug(f"Content-Encoding header: {response.headers.get('Content-Encoding', 'none')}")
         
-        # Parse the HTML
-        logger.debug("Parsing HTML response...")
+        # Get the text content (requests should auto-decode)
         html = response.text
         
         # Log more of the HTML in debug mode to see what we're getting
@@ -180,11 +181,11 @@ def scrape_price():
             logger.error("✗ Price not found in page content")
             # Save full HTML to a file for debugging
             try:
-                with open('/var/log/last_response.html', 'w') as f:
+                with open('/var/log/last_response.html', 'w', encoding='utf-8') as f:
                     f.write(html)
                 logger.info("Full HTML saved to /var/log/last_response.html for debugging")
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not save HTML: {e}")
             return None
             
         logger.info(f"✓ Found price: ${price}/gal")
@@ -209,7 +210,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.2.1)")
+    logger.info("COD Oil Price Scraper - Starting (v1.2.3)")
     logger.info("=" * 50)
     
     # Validate configuration
