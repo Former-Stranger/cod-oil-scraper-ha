@@ -2,7 +2,6 @@
 """
 COD Oil Price Scraper for Home Assistant
 Scrapes heating oil prices from codoil.com and pushes to Home Assistant
-Uses ingress token automatically provided by Home Assistant
 """
 
 import os
@@ -27,11 +26,36 @@ logger = logging.getLogger(__name__)
 # Entity ID based on zipcode
 ENTITY_ID = f"sensor.heating_oil_price_{ZIPCODE}"
 
+# Try multiple HA URLs and token sources
+HA_URLS = [
+    "http://supervisor/core",
+    "http://homeassistant:8123", 
+    "http://localhost:8123",
+    "http://127.0.0.1:8123"
+]
+
+TOKEN_SOURCES = [
+    os.getenv("SUPERVISOR_TOKEN"),
+    os.getenv("HA_TOKEN"),
+]
+
+# Try to read token from files
+token_files = [
+    "/var/run/secrets/SUPERVISOR_TOKEN",
+    "/run/secrets/SUPERVISOR_TOKEN",
+]
+
+for tf in token_files:
+    try:
+        with open(tf, 'r') as f:
+            TOKEN_SOURCES.append(f.read().strip())
+    except:
+        pass
+
 
 def push_to_ha(price):
     """
-    Push price to Home Assistant using internal API
-    Home Assistant OS automatically provides access via homeassistant_api: true
+    Push price to Home Assistant - try multiple methods
     
     Args:
         price (float): The oil price in $/gallon
@@ -39,9 +63,6 @@ def push_to_ha(price):
     Returns:
         bool: True if successful, False otherwise
     """
-    # Try the internal API endpoint that should be available with homeassistant_api: true
-    url = f"http://supervisor/core/api/states/{ENTITY_ID}"
-    
     payload = {
         "state": str(price),
         "attributes": {
@@ -54,29 +75,39 @@ def push_to_ha(price):
         }
     }
     
-    try:
-        logger.debug(f"Pushing to URL: {url}")
-        # No authorization header needed - supervisor handles it internally
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
-        
-        if r.status_code in [200, 201]:
-            logger.info(f"✓ Successfully pushed price ${price}/gal to Home Assistant")
-            return True
-        else:
-            logger.error(f"✗ Failed with status {r.status_code}")
-            logger.debug(f"Response: {r.text}")
-            return False
+    # Try each URL with each token
+    for ha_url in HA_URLS:
+        for token in TOKEN_SOURCES:
+            if not token:
+                continue
+                
+            url = f"{ha_url}/api/states/{ENTITY_ID}"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
             
-    except requests.exceptions.RequestException as e:
-        logger.error(f"✗ Failed to push to Home Assistant: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"✗ Unexpected error pushing to HA: {e}")
-        return False
+            try:
+                logger.debug(f"Trying URL: {ha_url} with token length: {len(token)}")
+                r = requests.post(url, headers=headers, json=payload, timeout=10)
+                
+                if r.status_code == 200 or r.status_code == 201:
+                    logger.info(f"✓ Successfully pushed price ${price}/gal to Home Assistant")
+                    logger.info(f"✓ Used URL: {ha_url}")
+                    return True
+                else:
+                    logger.debug(f"Failed with status {r.status_code}: {r.text[:100]}")
+                    
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Connection failed to {ha_url}: {e}")
+                continue
+            except Exception as e:
+                logger.debug(f"Unexpected error with {ha_url}: {e}")
+                continue
+    
+    logger.error("✗ Failed to push to Home Assistant after trying all methods")
+    logger.error(f"Tried {len(HA_URLS)} URLs with {len([t for t in TOKEN_SOURCES if t])} tokens")
+    return False
 
 
 def scrape_price():
@@ -163,13 +194,17 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.2.0)")
+    logger.info("COD Oil Price Scraper - Starting")
     logger.info("=" * 50)
     
     # Validate configuration
     if not ZIPCODE:
         logger.error("✗ ZIPCODE not configured!")
         sys.exit(1)
+    
+    # Check if we have any tokens
+    valid_tokens = [t for t in TOKEN_SOURCES if t]
+    logger.info(f"Found {len(valid_tokens)} potential authentication tokens")
     
     # Scrape the price
     price = scrape_price()
