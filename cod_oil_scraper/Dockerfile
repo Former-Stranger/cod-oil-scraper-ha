@@ -21,9 +21,10 @@ RUN pip3 install --break-system-packages --no-cache-dir -r requirements.txt
 # Copy application files
 COPY oil_scraper.py .
 COPY run.sh .
+COPY diagnostic.sh .
 
-# Make run script executable
-RUN chmod a+x /app/run.sh
+# Make scripts executable
+RUN chmod a+x /app/run.sh /app/diagnostic.sh
 
-# Set entrypoint
-CMD ["/app/run.sh"]
+# Set entrypoint to diagnostic for now
+CMD ["/app/diagnostic.sh"]
