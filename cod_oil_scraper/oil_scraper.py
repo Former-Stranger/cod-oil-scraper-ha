@@ -226,7 +226,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.4.5)")
+    logger.info("COD Oil Price Scraper - Starting (v1.4.6)")
     logger.info("=" * 50)
     
     # Validate configuration

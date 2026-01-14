@@ -1,28 +1,24 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bashio
 set -e
 
-CONFIG_PATH=/data/options.json
-
 echo "================================================"
-echo "COD Oil Price Scraper Starting (v1.4.5)"
+echo "COD Oil Price Scraper Starting (v1.4.6)"
 echo "================================================"
 
-# Debug: show all environment variables related to supervisor/hassio
-echo "DEBUG: Environment variables:"
-env | grep -i "supervisor\|hassio\|token" || echo "  (none found)"
-echo "================================================"
-
-# Read configuration from Home Assistant
-ZIPCODE=$(jq --raw-output '.zipcode' $CONFIG_PATH)
-HOUR_1=$(jq --raw-output '.schedule_hour_1' $CONFIG_PATH)
-HOUR_2=$(jq --raw-output '.schedule_hour_2' $CONFIG_PATH)
-LOG_LEVEL=$(jq --raw-output '.log_level // "info"' $CONFIG_PATH)
+# Read configuration using bashio
+ZIPCODE=$(bashio::config 'zipcode')
+HOUR_1=$(bashio::config 'schedule_hour_1')
+HOUR_2=$(bashio::config 'schedule_hour_2')
+LOG_LEVEL=$(bashio::config 'log_level')
 
 # Validate configuration
 if [ -z "$ZIPCODE" ]; then
-    echo "ERROR: Zipcode not configured!"
+    bashio::log.error "Zipcode not configured!"
     exit 1
 fi
+
+# Get the supervisor token using bashio
+SUPERVISOR_TOKEN="${__BASHIO_SUPERVISOR_TOKEN:-}"
 
 # Export environment variables for Python script
 export ZIPCODE
