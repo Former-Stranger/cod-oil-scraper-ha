@@ -4,7 +4,7 @@ set -e
 CONFIG_PATH=/data/options.json
 
 echo "================================================"
-echo "COD Oil Price Scraper Starting (v1.5.1)"
+echo "COD Oil Price Scraper Starting (v1.5.3)"
 echo "================================================"
 
 # Read configuration from options.json

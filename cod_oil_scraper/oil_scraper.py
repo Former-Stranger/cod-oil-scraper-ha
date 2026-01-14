@@ -65,7 +65,7 @@ def push_to_ha(price):
         r = requests.post(url, headers=headers, json=payload, timeout=30)
         
         if r.status_code in [200, 201]:
-            logger.info(f"✓ Successfully pushed price ${price}/gal to Home Assistant")
+            logger.info(f"✓ Updated {ENTITY_ID} = ${price}/gal")
             return True
         else:
             logger.error(f"✗ Failed with status {r.status_code}")
@@ -225,9 +225,10 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.5.1)")
+    logger.info("COD Oil Price Scraper - Starting (v1.5.3)")
+    logger.info(f"Entity: {ENTITY_ID}")
     logger.info("=" * 50)
-    
+
     # Validate configuration
     if not ZIPCODE:
         logger.error("✗ ZIPCODE not configured!")
