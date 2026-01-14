@@ -148,6 +148,10 @@ def scrape_price():
         logger.debug("Parsing HTML response...")
         html = response.text
         
+        # Log more of the HTML in debug mode to see what we're getting
+        logger.debug(f"Page content length: {len(html)} characters")
+        logger.debug(f"First 1000 characters:\n{html[:1000]}")
+        
         # Extract price using regex - look for price patterns
         price_patterns = [
             r'\$(\d+\.\d{2})',  # $3.45
@@ -157,6 +161,7 @@ def scrape_price():
         price = None
         for pattern in price_patterns:
             matches = re.findall(pattern, html, re.IGNORECASE)
+            logger.debug(f"Pattern '{pattern}' found {len(matches)} matches: {matches[:5]}")
             if matches:
                 # Get the first reasonable price (between $1 and $10)
                 for match in matches:
@@ -164,6 +169,7 @@ def scrape_price():
                         potential_price = float(match)
                         if 1.0 <= potential_price <= 10.0:
                             price = potential_price
+                            logger.debug(f"Selected price: ${price}")
                             break
                     except ValueError:
                         continue
@@ -172,8 +178,13 @@ def scrape_price():
         
         if not price:
             logger.error("✗ Price not found in page content")
-            logger.debug(f"Page content length: {len(html)} characters")
-            logger.debug(f"HTML sample: {html[:500]}")
+            # Save full HTML to a file for debugging
+            try:
+                with open('/var/log/last_response.html', 'w') as f:
+                    f.write(html)
+                logger.info("Full HTML saved to /var/log/last_response.html for debugging")
+            except:
+                pass
             return None
             
         logger.info(f"✓ Found price: ${price}/gal")
@@ -198,7 +209,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.2.0)")
+    logger.info("COD Oil Price Scraper - Starting (v1.2.1)")
     logger.info("=" * 50)
     
     # Validate configuration
