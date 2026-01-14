@@ -80,12 +80,12 @@ def push_to_ha(price):
 def scrape_price():
     """
     Scrape heating oil price from COD Oil website
-    
+
     Returns:
         float or None: The price in $/gallon, or None if scraping failed
     """
     logger.info(f"Starting price scrape for zipcode: {ZIPCODE}")
-    
+
     try:
         session = requests.Session()
         session.headers.update({
@@ -93,67 +93,100 @@ def scrape_price():
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
         })
-        
-        # Get main page
-        logger.debug("Fetching main page...")
+
+        # Step 1: Get main page to establish session/cookies
+        logger.debug("Fetching main page to establish session...")
         response = session.get("https://www.codoil.com", timeout=30, allow_redirects=True)
         response.raise_for_status()
-        
+
         time.sleep(1)
-        
-        # Submit zipcode
-        logger.debug(f"Submitting zipcode: {ZIPCODE}")
+
+        # Step 2: Submit zipcode via AJAX endpoint
+        logger.debug(f"Submitting zipcode via AJAX: {ZIPCODE}")
+        ajax_url = "https://codoil.com/zipcodebasedprice/index/zipcodecheck/"
         session.headers.update({
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': 'https://www.codoil.com',
-            'Referer': 'https://www.codoil.com/',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Origin': 'https://codoil.com',
+            'Referer': 'https://codoil.com/',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
         })
-        
+
         response = session.post(
-            "https://www.codoil.com",
-            data={'number': ZIPCODE},
+            ajax_url,
+            data={'zipvalue': ZIPCODE},
             timeout=30,
             allow_redirects=True
         )
         response.raise_for_status()
-        
+
+        # Parse the AJAX response to get the redirect URL
+        try:
+            ajax_data = response.json()
+            logger.debug(f"AJAX response: {ajax_data}")
+        except json.JSONDecodeError as e:
+            logger.error(f"✗ Failed to parse AJAX response: {e}")
+            return None
+
+        if not ajax_data.get('zipcode_status'):
+            logger.error(f"✗ Invalid zipcode: {ZIPCODE}")
+            return None
+
+        redirect_url = ajax_data.get('redirect_url')
+        if not redirect_url:
+            logger.error("✗ No redirect URL in AJAX response")
+            return None
+
+        # Step 3: Follow redirect to get the pricing page
+        logger.debug(f"Following redirect to: {redirect_url}")
+        session.headers.update({
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        })
+        session.headers.pop('X-Requested-With', None)
+        session.headers.pop('Content-Type', None)
+
+        time.sleep(1)
+
+        response = session.get(redirect_url, timeout=30, allow_redirects=True)
+        response.raise_for_status()
+
         html = response.text
-        logger.debug(f"Page loaded: {len(html)} characters")
-        
-        # Extract the zipcodePrices JavaScript variable
+        logger.debug(f"Price page loaded: {len(html)} characters")
+
+        # Step 4: Extract the zipcodePrices JavaScript variable
         # Pattern: window.zipcodePrices = {"zipcodeprices":[...]}
         pattern = r'window\.zipcodePrices\s*=\s*({[^;]+});'
         match = re.search(pattern, html)
-        
+
         if not match:
             logger.error("✗ Could not find zipcodePrices in HTML")
             return None
-        
+
         try:
             prices_json = json.loads(match.group(1))
             logger.debug(f"Found zipcodePrices data: {prices_json}")
-            
+
             # Get the first price from the array
             if 'zipcodeprices' in prices_json and len(prices_json['zipcodeprices']) > 0:
                 first_price_obj = prices_json['zipcodeprices'][0]
                 price_str = first_price_obj['price']
-                
+
                 logger.debug(f"Raw price string: {price_str}")
-                
+
                 # Extract price from string like "$2.89<sup>9</sup>"
                 # This means $2.899 per gallon
                 price_match = re.search(r'\$(\d+\.\d+)(?:<sup>(\d+)</sup>)?', price_str)
-                
+
                 if price_match:
                     dollars = price_match.group(1)
                     decimal = price_match.group(2) if price_match.group(2) else ''
-                    
+
                     # Combine: "2.89" + "9" = "2.899"
                     if decimal:
                         price = float(dollars + decimal)
                     else:
                         price = float(dollars)
-                    
+
                     logger.info(f"✓ Found price: ${price}/gal for {first_price_obj['gallon']}")
                     return price
                 else:
@@ -162,7 +195,7 @@ def scrape_price():
             else:
                 logger.error("✗ No prices found in zipcodeprices array")
                 return None
-                
+
         except json.JSONDecodeError as e:
             logger.error(f"✗ Failed to parse JSON: {e}")
             return None
@@ -170,7 +203,7 @@ def scrape_price():
             logger.error(f"✗ Error extracting price: {e}")
             logger.exception("Full traceback:")
             return None
-        
+
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 403:
             logger.error(f"✗ Access forbidden (403) - website may be blocking automated access")
@@ -189,7 +222,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.3.0)")
+    logger.info("COD Oil Price Scraper - Starting (v1.4.0)")
     logger.info("=" * 50)
     
     # Validate configuration
