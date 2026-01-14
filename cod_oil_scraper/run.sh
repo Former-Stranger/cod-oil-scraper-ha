@@ -4,7 +4,7 @@ set -e
 CONFIG_PATH=/data/options.json
 
 echo "================================================"
-echo "COD Oil Price Scraper Starting (v1.4.0)"
+echo "COD Oil Price Scraper Starting (v1.4.1)"
 echo "================================================"
 
 # Read configuration from Home Assistant

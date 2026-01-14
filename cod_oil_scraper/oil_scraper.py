@@ -16,6 +16,7 @@ import json
 # Configuration from environment variables
 ZIPCODE = os.getenv("ZIPCODE")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info").upper()
+SUPERVISOR_TOKEN = os.getenv("SUPERVISOR_TOKEN")
 
 # Setup logging
 logging.basicConfig(
@@ -56,9 +57,10 @@ def push_to_ha(price):
     try:
         logger.debug(f"Pushing to URL: {url}")
         headers = {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {SUPERVISOR_TOKEN}"
         }
-        
+
         r = requests.post(url, headers=headers, json=payload, timeout=30)
         
         if r.status_code in [200, 201]:
@@ -222,7 +224,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.4.0)")
+    logger.info("COD Oil Price Scraper - Starting (v1.4.1)")
     logger.info("=" * 50)
     
     # Validate configuration
