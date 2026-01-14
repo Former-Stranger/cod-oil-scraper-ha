@@ -25,5 +25,5 @@ COPY run.sh .
 # Make scripts executable
 RUN chmod a+x /app/run.sh
 
-# Set entrypoint
+# Set entrypoint back to normal operation
 CMD ["/app/run.sh"]

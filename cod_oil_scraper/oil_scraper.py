@@ -2,7 +2,6 @@
 """
 COD Oil Price Scraper for Home Assistant
 Scrapes heating oil prices from codoil.com and pushes to Home Assistant
-Uses ingress token automatically provided by Home Assistant
 """
 
 import os
@@ -12,6 +11,7 @@ import requests
 import re
 from datetime import datetime
 import time
+import json
 
 # Configuration from environment variables
 ZIPCODE = os.getenv("ZIPCODE")
@@ -32,7 +32,6 @@ ENTITY_ID = f"sensor.heating_oil_price_{ZIPCODE}"
 def push_to_ha(price):
     """
     Push price to Home Assistant using internal API
-    Home Assistant OS automatically provides access via homeassistant_api: true
     
     Args:
         price (float): The oil price in $/gallon
@@ -40,7 +39,6 @@ def push_to_ha(price):
     Returns:
         bool: True if successful, False otherwise
     """
-    # Try the internal API endpoint that should be available with homeassistant_api: true
     url = f"http://supervisor/core/api/states/{ENTITY_ID}"
     
     payload = {
@@ -57,7 +55,6 @@ def push_to_ha(price):
     
     try:
         logger.debug(f"Pushing to URL: {url}")
-        # No authorization header needed - supervisor handles it internally
         headers = {
             "Content-Type": "application/json"
         }
@@ -90,111 +87,93 @@ def scrape_price():
     logger.info(f"Starting price scrape for zipcode: {ZIPCODE}")
     
     try:
-        # Create a session with more realistic browser headers
         session = requests.Session()
-        
-        # More complete browser headers - NOTE: removed gzip from Accept-Encoding to avoid compression issues
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0',
         })
         
-        # First, get the main page to establish session and get cookies
+        # Get main page
         logger.debug("Fetching main page...")
         response = session.get("https://www.codoil.com", timeout=30, allow_redirects=True)
         response.raise_for_status()
         
-        logger.debug(f"Initial response status: {response.status_code}")
-        logger.debug(f"Cookies received: {len(session.cookies)}")
-        logger.debug(f"Response encoding: {response.encoding}")
-        
-        # Small delay to appear more human-like
         time.sleep(1)
         
-        # Now submit the zipcode with the established session
+        # Submit zipcode
         logger.debug(f"Submitting zipcode: {ZIPCODE}")
-        
-        # Update headers for the POST request
         session.headers.update({
             'Content-Type': 'application/x-www-form-urlencoded',
             'Origin': 'https://www.codoil.com',
             'Referer': 'https://www.codoil.com/',
         })
         
-        form_data = {
-            'number': ZIPCODE
-        }
-        
         response = session.post(
             "https://www.codoil.com",
-            data=form_data,
+            data={'number': ZIPCODE},
             timeout=30,
             allow_redirects=True
         )
         response.raise_for_status()
         
-        logger.debug(f"POST response status: {response.status_code}")
-        logger.debug(f"POST response encoding: {response.encoding}")
-        logger.debug(f"Content-Encoding header: {response.headers.get('Content-Encoding', 'none')}")
-        
-        # Get the text content (requests should auto-decode)
         html = response.text
+        logger.debug(f"Page loaded: {len(html)} characters")
         
-        # Log more of the HTML in debug mode to see what we're getting
-        logger.debug(f"Page content length: {len(html)} characters")
-        logger.debug(f"First 1000 characters:\n{html[:1000]}")
+        # Extract the zipcodePrices JavaScript variable
+        # Pattern: window.zipcodePrices = {"zipcodeprices":[...]}
+        pattern = r'window\.zipcodePrices\s*=\s*({[^;]+});'
+        match = re.search(pattern, html)
         
-        # Extract price using regex - look for price patterns
-        price_patterns = [
-            r'\$(\d+\.\d{2})',  # $3.45
-            r'(\d+\.\d{2})\s*(?:per\s*gal|\/\s*gal)',  # 3.45 per gal or 3.45/gal
-        ]
-        
-        price = None
-        for pattern in price_patterns:
-            matches = re.findall(pattern, html, re.IGNORECASE)
-            logger.debug(f"Pattern '{pattern}' found {len(matches)} matches: {matches[:5]}")
-            if matches:
-                # Get the first reasonable price (between $1 and $10)
-                for match in matches:
-                    try:
-                        potential_price = float(match)
-                        if 1.0 <= potential_price <= 10.0:
-                            price = potential_price
-                            logger.debug(f"Selected price: ${price}")
-                            break
-                    except ValueError:
-                        continue
-                if price:
-                    break
-        
-        if not price:
-            logger.error("✗ Price not found in page content")
-            # Save full HTML to a file for debugging
-            try:
-                with open('/var/log/last_response.html', 'w', encoding='utf-8') as f:
-                    f.write(html)
-                logger.info("Full HTML saved to /var/log/last_response.html for debugging")
-            except Exception as e:
-                logger.debug(f"Could not save HTML: {e}")
+        if not match:
+            logger.error("✗ Could not find zipcodePrices in HTML")
             return None
+        
+        try:
+            prices_json = json.loads(match.group(1))
+            logger.debug(f"Found zipcodePrices data: {prices_json}")
             
-        logger.info(f"✓ Found price: ${price}/gal")
-        return price
+            # Get the first price from the array
+            if 'zipcodeprices' in prices_json and len(prices_json['zipcodeprices']) > 0:
+                first_price_obj = prices_json['zipcodeprices'][0]
+                price_str = first_price_obj['price']
+                
+                logger.debug(f"Raw price string: {price_str}")
+                
+                # Extract price from string like "$2.89<sup>9</sup>"
+                # This means $2.899 per gallon
+                price_match = re.search(r'\$(\d+\.\d+)(?:<sup>(\d+)</sup>)?', price_str)
+                
+                if price_match:
+                    dollars = price_match.group(1)
+                    decimal = price_match.group(2) if price_match.group(2) else ''
+                    
+                    # Combine: "2.89" + "9" = "2.899"
+                    if decimal:
+                        price = float(dollars + decimal)
+                    else:
+                        price = float(dollars)
+                    
+                    logger.info(f"✓ Found price: ${price}/gal for {first_price_obj['gallon']}")
+                    return price
+                else:
+                    logger.error(f"✗ Could not parse price from: {price_str}")
+                    return None
+            else:
+                logger.error("✗ No prices found in zipcodeprices array")
+                return None
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"✗ Failed to parse JSON: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"✗ Error extracting price: {e}")
+            logger.exception("Full traceback:")
+            return None
         
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 403:
             logger.error(f"✗ Access forbidden (403) - website may be blocking automated access")
-            logger.error("This could be due to bot detection. The website may require a real browser.")
         else:
             logger.error(f"✗ HTTP error during scraping: {e}")
         return None
@@ -210,7 +189,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.2.3)")
+    logger.info("COD Oil Price Scraper - Starting (v1.3.0)")
     logger.info("=" * 50)
     
     # Validate configuration
