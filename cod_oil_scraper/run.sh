@@ -4,7 +4,12 @@ set -e
 CONFIG_PATH=/data/options.json
 
 echo "================================================"
-echo "COD Oil Price Scraper Starting (v1.4.4)"
+echo "COD Oil Price Scraper Starting (v1.4.5)"
+echo "================================================"
+
+# Debug: show all environment variables related to supervisor/hassio
+echo "DEBUG: Environment variables:"
+env | grep -i "supervisor\|hassio\|token" || echo "  (none found)"
 echo "================================================"
 
 # Read configuration from Home Assistant
