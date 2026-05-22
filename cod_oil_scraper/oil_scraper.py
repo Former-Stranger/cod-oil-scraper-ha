@@ -18,6 +18,7 @@ ZIPCODE = os.getenv("ZIPCODE")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info").upper()
 HA_TOKEN = os.getenv("HA_TOKEN")
 HA_URL = os.getenv("HA_URL", "http://homeassistant:8123").rstrip("/")
+APP_VERSION = os.getenv("APP_VERSION", "1.5.5")
 
 # Setup logging
 logging.basicConfig(
@@ -295,7 +296,7 @@ def scrape_price():
 def main():
     """Main execution function"""
     logger.info("=" * 50)
-    logger.info("COD Oil Price Scraper - Starting (v1.5.3)")
+    logger.info(f"COD Oil Price Scraper - Starting (v{APP_VERSION})")
     logger.info(f"Entity: {ENTITY_ID}")
     logger.info("=" * 50)
 

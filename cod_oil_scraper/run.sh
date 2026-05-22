@@ -5,7 +5,9 @@ set -o pipefail
 CONFIG_PATH=/data/options.json
 
 echo "================================================"
-echo "COD Oil Price Scraper Starting (v1.5.4)"
+APP_VERSION="1.5.5"
+
+echo "COD Oil Price Scraper Starting (v${APP_VERSION})"
 echo "================================================"
 
 # Read configuration from options.json
@@ -42,6 +44,7 @@ export HA_URL
 export HA_READY_TIMEOUT
 export HA_READY_INTERVAL
 export HA_STARTUP_SETTLE_SECONDS
+export APP_VERSION
 
 # Format time for display
 printf -v FORMATTED_TIME "%02d:%02d" "$SCHEDULE_HOUR" "$SCHEDULE_MINUTE"
