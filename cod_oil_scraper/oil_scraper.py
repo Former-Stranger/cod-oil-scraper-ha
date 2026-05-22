@@ -17,6 +17,7 @@ import json
 ZIPCODE = os.getenv("ZIPCODE")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info").upper()
 HA_TOKEN = os.getenv("HA_TOKEN")
+HA_URL = os.getenv("HA_URL", "http://homeassistant:8123").rstrip("/")
 
 # Setup logging
 logging.basicConfig(
@@ -30,6 +31,71 @@ logger = logging.getLogger(__name__)
 ENTITY_ID = f"sensor.heating_oil_price_{ZIPCODE}"
 
 
+def int_env(name, default, minimum=0):
+    """Read a non-negative integer from the environment."""
+    try:
+        return max(minimum, int(os.getenv(name, default)))
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s value; using default %s", name, default)
+        return default
+
+
+HA_READY_TIMEOUT = int_env("HA_READY_TIMEOUT", 600)
+HA_READY_INTERVAL = int_env("HA_READY_INTERVAL", 10, minimum=1)
+HA_STARTUP_SETTLE_SECONDS = int_env("HA_STARTUP_SETTLE_SECONDS", 60)
+HA_PUSH_ATTEMPTS = int_env("HA_PUSH_ATTEMPTS", 6, minimum=1)
+HA_PUSH_RETRY_INTERVAL = int_env("HA_PUSH_RETRY_INTERVAL", 10, minimum=1)
+
+
+def ha_headers():
+    """Return authenticated Home Assistant API headers."""
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {HA_TOKEN}"
+    }
+
+
+def wait_for_homeassistant():
+    """
+    Wait until the Home Assistant REST API is ready to accept state updates.
+
+    Home Assistant can expose the add-on network name before Core is fully
+    ready during a system restart. Without this guard the startup scrape can
+    succeed externally but fail to create/update the HA state.
+    """
+    url = f"{HA_URL}/api/config"
+    deadline = time.monotonic() + HA_READY_TIMEOUT
+
+    logger.info(f"Waiting for Home Assistant API at {HA_URL} (timeout: {HA_READY_TIMEOUT}s)")
+
+    while True:
+        try:
+            response = requests.get(url, headers=ha_headers(), timeout=10)
+
+            if response.status_code == 200:
+                logger.info("✓ Home Assistant API is ready")
+                if HA_STARTUP_SETTLE_SECONDS:
+                    logger.info(f"Waiting {HA_STARTUP_SETTLE_SECONDS}s for startup state to settle")
+                    time.sleep(HA_STARTUP_SETTLE_SECONDS)
+                return True
+
+            if response.status_code in (401, 403):
+                logger.error(f"✗ Home Assistant rejected the configured token with status {response.status_code}")
+                return False
+
+            logger.info(f"Home Assistant API returned status {response.status_code}; retrying")
+
+        except requests.exceptions.RequestException as e:
+            logger.info(f"Home Assistant API is not ready yet: {e}")
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            logger.error(f"✗ Home Assistant API was not ready after {HA_READY_TIMEOUT}s")
+            return False
+
+        time.sleep(min(HA_READY_INTERVAL, remaining))
+
+
 def push_to_ha(price):
     """
     Push price to Home Assistant using REST API
@@ -40,8 +106,7 @@ def push_to_ha(price):
     Returns:
         bool: True if successful, False otherwise
     """
-    # Use direct Home Assistant API
-    url = f"http://homeassistant:8123/api/states/{ENTITY_ID}"
+    url = f"{HA_URL}/api/states/{ENTITY_ID}"
 
     payload = {
         "state": str(price),
@@ -55,29 +120,34 @@ def push_to_ha(price):
         }
     }
 
-    try:
-        logger.debug(f"Pushing to URL: {url}")
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {HA_TOKEN}"
-        }
+    for attempt in range(1, HA_PUSH_ATTEMPTS + 1):
+        try:
+            logger.debug(f"Pushing to URL: {url}")
+            r = requests.post(url, headers=ha_headers(), json=payload, timeout=30)
 
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
-        
-        if r.status_code in [200, 201]:
-            logger.info(f"✓ Updated {ENTITY_ID} = ${price}/gal")
-            return True
-        else:
-            logger.error(f"✗ Failed with status {r.status_code}")
+            if r.status_code in [200, 201]:
+                logger.info(f"✓ Updated {ENTITY_ID} = ${price}/gal")
+                return True
+
+            if r.status_code in [401, 403]:
+                logger.error(f"✗ Home Assistant rejected the configured token with status {r.status_code}")
+                logger.debug(f"Response: {r.text}")
+                return False
+
+            logger.warning(f"Push attempt {attempt}/{HA_PUSH_ATTEMPTS} failed with status {r.status_code}")
             logger.debug(f"Response: {r.text}")
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Push attempt {attempt}/{HA_PUSH_ATTEMPTS} failed: {e}")
+        except Exception as e:
+            logger.error(f"✗ Unexpected error pushing to HA: {e}")
             return False
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"✗ Failed to push to Home Assistant: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"✗ Unexpected error pushing to HA: {e}")
-        return False
+
+        if attempt < HA_PUSH_ATTEMPTS:
+            time.sleep(HA_PUSH_RETRY_INTERVAL)
+
+    logger.error("✗ Failed to update Home Assistant after retries")
+    return False
 
 
 def scrape_price():
@@ -232,6 +302,15 @@ def main():
     # Validate configuration
     if not ZIPCODE:
         logger.error("✗ ZIPCODE not configured!")
+        sys.exit(1)
+
+    if not HA_TOKEN:
+        logger.error("✗ HA_TOKEN not configured!")
+        sys.exit(1)
+
+    if not wait_for_homeassistant():
+        logger.error("✗ Home Assistant was not ready for updates")
+        logger.info("=" * 50)
         sys.exit(1)
     
     # Scrape the price
